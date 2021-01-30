@@ -29,8 +29,10 @@ VID_OUT_FOURCC = cv.VideoWriter_fourcc(*'XVID')
 VID_OUT_BORDER_L, VID_OUT_BORDER_T, VID_OUT_BORDER_R, VID_OUT_BORDER_B = 182, 60, 1092, 660
 VID_OUT_WIDTH, VID_OUT_HEIGHT = VID_OUT_BORDER_R - VID_OUT_BORDER_L, VID_OUT_BORDER_B - VID_OUT_BORDER_T
 
-RESULT_TEMPLATE_TYPES = ['f', 'm']
-RESULT_BORDER_L, RESULT_BORDER_T, RESULT_BORDER_R, RESULT_BORDER_B = 670, 575, VID_OUT_BORDER_R, VID_OUT_BORDER_B
+RESULT_TEMPLATE_DIGITS = [str(num) for num in range(10)]
+RESULT_TEMPLATE_TYPES = ['f', 'm'] + RESULT_TEMPLATE_DIGITS
+RESULT_TEMPLATE_HEIGHT = 23
+RESULT_BORDER_L, RESULT_BORDER_T, RESULT_BORDER_R, RESULT_BORDER_B = 670, 575, VID_OUT_BORDER_R, 598
 RESULT_THRESHOLD = 0.95
 
 NUM_RECORD_CMDS = 2
@@ -115,11 +117,23 @@ def process_video(record_cmd):
                 print(f'\rFailed throw\n{STDIN_PROMPT}', end='')
 
             elif np.max(res_m) > RESULT_THRESHOLD:
+                # Read the result
+                res = [cv.matchTemplate(result_frame, templates[t], cv.TM_CCOEFF_NORMED) for t in RESULT_TEMPLATE_DIGITS]
+                digits_pos_d = {}
+                for digit, digit_res in enumerate(res):
+                    loc = np.where(digit_res >= RESULT_THRESHOLD)
+                    for x_pos in loc[1]:
+                        digits_pos_d[x_pos] = digit
+
+                result = 0
+                for _, digit in sorted(digits_pos_d.items()):
+                    result = result * 10 + digit
+
                 out.release()
                 record_cmd.value = 0
                 recording, out = False, None
 
-                print(f'\rSuccessful throw\n{STDIN_PROMPT}', end='')
+                print(f'\rSuccessful throw: {result/100:.2f} m.\n{STDIN_PROMPT}', end='')
 
         # Show preview
         cv.imshow('preview', frame)
