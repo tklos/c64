@@ -28,6 +28,7 @@ VID_OUT_FOURCC = cv.VideoWriter_fourcc(*'XVID')
 
 VID_OUT_BORDER_L, VID_OUT_BORDER_T, VID_OUT_BORDER_R, VID_OUT_BORDER_B = 182, 60, 1092, 660
 VID_OUT_WIDTH, VID_OUT_HEIGHT = VID_OUT_BORDER_R - VID_OUT_BORDER_L, VID_OUT_BORDER_B - VID_OUT_BORDER_T
+VID_OUT_POSTRUN = 3.
 
 RESULT_TEMPLATE_DIGITS = [str(num) for num in range(10)]
 RESULT_TEMPLATE_TYPES = ['f', 'm'] + RESULT_TEMPLATE_DIGITS
@@ -72,7 +73,7 @@ def process_video(record_cmd):
     cap.set(cv.CAP_PROP_FRAME_HEIGHT, VID_HEIGHT)
     cap.set(cv.CAP_PROP_FPS, VID_FPS)
 
-    recording, out = False, None
+    recording, out, postrun_end = False, None, None
     while True:
         cmd = record_cmd.value
 
@@ -83,13 +84,13 @@ def process_video(record_cmd):
                 os.close(fh)
                 out = cv.VideoWriter(tmp_filename, VID_OUT_FOURCC, VID_FPS, (VID_OUT_WIDTH, VID_OUT_HEIGHT))
 
-                recording = True
+                recording, postrun_end = True, None
 
         elif cmd == RECORD_KILL:
             out.release()
 
             record_cmd.value = 0
-            recording, out = False, None
+            recording = False
 
             print(f'\rRecording killed\n{STDIN_PROMPT}', end='')
 
@@ -103,37 +104,43 @@ def process_video(record_cmd):
             # Save frame
             out.write(frame)
 
-            # Check if the run is finished
-            result_frame = frame[RESULT_BORDER_T:RESULT_BORDER_B, RESULT_BORDER_L:RESULT_BORDER_R]
-
-            res_f = cv.matchTemplate(result_frame, templates['f'], cv.TM_CCOEFF_NORMED)
-            res_m = cv.matchTemplate(result_frame, templates['m'], cv.TM_CCOEFF_NORMED)
-
-            if np.max(res_f) > RESULT_THRESHOLD:
+            # Check if postrun is finished
+            if postrun_end is not None and postrun_end < time.time():
                 out.release()
+
                 record_cmd.value = 0
-                recording, out = False, None
+                recording = False
 
-                print(f'\rFailed throw\n{STDIN_PROMPT}', end='')
+                print(f'\rPostrun finished\n{STDIN_PROMPT}', end='')
 
-            elif np.max(res_m) > RESULT_THRESHOLD:
-                # Read the result
-                res = [cv.matchTemplate(result_frame, templates[t], cv.TM_CCOEFF_NORMED) for t in RESULT_TEMPLATE_DIGITS]
-                digits_pos_d = {}
-                for digit, digit_res in enumerate(res):
-                    loc = np.where(digit_res >= RESULT_THRESHOLD)
-                    for x_pos in loc[1]:
-                        digits_pos_d[x_pos] = digit
+            elif postrun_end is None:
+                # Check if the run is finished
+                result_frame = frame[RESULT_BORDER_T:RESULT_BORDER_B, RESULT_BORDER_L:RESULT_BORDER_R]
 
-                result = 0
-                for _, digit in sorted(digits_pos_d.items()):
-                    result = result * 10 + digit
+                res_f = cv.matchTemplate(result_frame, templates['f'], cv.TM_CCOEFF_NORMED)
+                res_m = cv.matchTemplate(result_frame, templates['m'], cv.TM_CCOEFF_NORMED)
 
-                out.release()
-                record_cmd.value = 0
-                recording, out = False, None
+                if np.max(res_f) > RESULT_THRESHOLD:
+                    postrun_end = time.time() + VID_OUT_POSTRUN
 
-                print(f'\rSuccessful throw: {result/100:.2f} m.\n{STDIN_PROMPT}', end='')
+                    print(f'\rFailed throw\n{STDIN_PROMPT}', end='')
+
+                elif np.max(res_m) > RESULT_THRESHOLD:
+                    # Read the result
+                    res = [cv.matchTemplate(result_frame, templates[t], cv.TM_CCOEFF_NORMED) for t in RESULT_TEMPLATE_DIGITS]
+                    digits_pos_d = {}
+                    for digit, digit_res in enumerate(res):
+                        loc = np.where(digit_res >= RESULT_THRESHOLD)
+                        for x_pos in loc[1]:
+                            digits_pos_d[x_pos] = digit
+
+                    result = 0
+                    for _, digit in sorted(digits_pos_d.items()):
+                        result = result * 10 + digit
+
+                    postrun_end = time.time() + VID_OUT_POSTRUN
+
+                    print(f'\rSuccessful throw: {result/100:.2f} m.\n{STDIN_PROMPT}', end='')
 
         # Show preview
         cv.imshow('preview', frame)
