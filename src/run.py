@@ -1,6 +1,7 @@
 import os
 import queue
 import readline
+import shutil
 import signal
 import tempfile
 import threading
@@ -39,6 +40,8 @@ RESULT_THRESHOLD = 0.95
 NUM_RECORD_CMDS = 2
 RECORD_START, RECORD_KILL = range(1, NUM_RECORD_CMDS+1)  # Record statuses start from 1
 
+RECORD_DIR = 'replays'
+
 
 def read_stdin(queue):
     while True:
@@ -73,21 +76,23 @@ def process_video(record_cmd):
     cap.set(cv.CAP_PROP_FRAME_HEIGHT, VID_HEIGHT)
     cap.set(cv.CAP_PROP_FPS, VID_FPS)
 
-    recording, out, postrun_end = False, None, None
+    recording, out_tmp_filename, out = False, None, None
+    postrun_end, curr_result = None, None
     while True:
         cmd = record_cmd.value
 
         if cmd == RECORD_START:
             if not recording:
-                fh, tmp_filename = tempfile.mkstemp(prefix='replay-', suffix='.avi')
-                print(f'\rSaving to {tmp_filename}\n{STDIN_PROMPT}', end='')
+                fh, out_tmp_filename = tempfile.mkstemp(prefix='replay-', suffix='.avi')
+                print(f'\rSaving to {out_tmp_filename}\n{STDIN_PROMPT}', end='')
                 os.close(fh)
-                out = cv.VideoWriter(tmp_filename, VID_OUT_FOURCC, VID_FPS, (VID_OUT_WIDTH, VID_OUT_HEIGHT))
+                out = cv.VideoWriter(out_tmp_filename, VID_OUT_FOURCC, VID_FPS, (VID_OUT_WIDTH, VID_OUT_HEIGHT))
 
                 recording, postrun_end = True, None
 
         elif cmd == RECORD_KILL:
             out.release()
+            os.remove(out_tmp_filename)
 
             record_cmd.value = 0
             recording = False
@@ -108,10 +113,13 @@ def process_video(record_cmd):
             if postrun_end is not None and postrun_end < time.time():
                 out.release()
 
+                out_filename = f'{RECORD_DIR}/{str(curr_result):0>5s}.avi'
+                shutil.move(out_tmp_filename, out_filename)
+
                 record_cmd.value = 0
                 recording = False
 
-                print(f'\rPostrun finished\n{STDIN_PROMPT}', end='')
+                print(f'\rPostrun finished; {out_tmp_filename} moved to {out_filename}\n{STDIN_PROMPT}', end='')
 
             elif postrun_end is None:
                 # Check if the run is finished
@@ -122,6 +130,7 @@ def process_video(record_cmd):
 
                 if np.max(res_f) > RESULT_THRESHOLD:
                     postrun_end = time.time() + VID_OUT_POSTRUN
+                    curr_result = 'fault'
 
                     print(f'\rFailed throw\n{STDIN_PROMPT}', end='')
 
@@ -139,6 +148,7 @@ def process_video(record_cmd):
                         result = result * 10 + digit
 
                     postrun_end = time.time() + VID_OUT_POSTRUN
+                    curr_result = result
 
                     print(f'\rSuccessful throw: {result/100:.2f} m.\n{STDIN_PROMPT}', end='')
 
