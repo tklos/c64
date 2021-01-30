@@ -1,6 +1,7 @@
 import os
 import queue
 import readline
+import signal
 import tempfile
 import threading
 import time
@@ -36,10 +37,11 @@ def read_stdin(queue):
     while True:
         try:
             cmd = input(STDIN_PROMPT).strip()
-            if cmd == 'q':
-                queue.put(('stdin', _CMD_QUEUE_SENTINEL))
-                break
             queue.put(('stdin', cmd))
+
+            # A workaround to restore console settings
+            if cmd == 'q':
+                break
 
         except EOFError:
             queue.put(('stdin', _CMD_QUEUE_SENTINEL))
@@ -69,22 +71,22 @@ def process_throw(replay_cmd):
             continue
 
         fh, tmp_filename = tempfile.mkstemp(prefix='replay-', suffix='.avi')
-        print(tmp_filename)
+        print(f'\rSaving to {tmp_filename}\n{STDIN_PROMPT}', end='')
         os.close(fh)
         out = cv.VideoWriter(tmp_filename, VID_OUT_FOURCC, VID_FPS, (VID_OUT_WIDTH, VID_OUT_HEIGHT))
 
         while True:
             if replay_cmd.cmd == REPLAY_KILL:
-                print(f'\nKilling the recording\n{STDIN_PROMPT}', end='')
+                print(f'\rKilling the recording\n{STDIN_PROMPT}', end='')
                 break
 
             # Get next frame
             ret, frame = cap.read()
             if not ret:
                 continue
+            frame = frame[VID_OUT_BORDER_T:VID_OUT_BORDER_B, VID_OUT_BORDER_L:VID_OUT_BORDER_R]
 
             # Save frame
-            frame = frame[VID_OUT_BORDER_T:VID_OUT_BORDER_B, VID_OUT_BORDER_L:VID_OUT_BORDER_R]
             out.write(frame)
 
             cv.waitKey(1)
@@ -115,6 +117,10 @@ class ReplayCmd:
             return self.cmd
 
 
+# Ignore SIGINT
+signal.signal(signal.SIGINT, signal.SIG_IGN)
+
+
 def main():
     cmd_queue = queue.Queue()
     replay_cmd = ReplayCmd()
@@ -127,18 +133,14 @@ def main():
         last_cmd = None
         while True:
             # Read command
-            try:
-                cmd = cmd_queue.get()
-            except KeyboardInterrupt:
-                print('\nBye')
-                break
+            cmd = cmd_queue.get()
 
             # Yield control, so that `input` has time to run
             time.sleep(1e-4)
 
             ## Command from serial
             if cmd[0] == 'serial':
-                print(f'\n{cmd[1]}\n{STDIN_PROMPT}', end='')
+                print(f'\r{cmd[1]}\n{STDIN_PROMPT}', end='')
                 continue
 
             ## Command from stdin
@@ -154,7 +156,7 @@ def main():
                 continue
 
             if cmd is _CMD_QUEUE_SENTINEL:
-                print('\nBye')
+                print('\rBye')
                 break
 
             elif cmd in ['w', 's', 'a', 'd', 'f']:
@@ -170,27 +172,29 @@ def main():
 
             elif cmd == 'l':
                 if last_cmd is None:
-                    print(f'\nNo last command\n{STDIN_PROMPT}', end='')
+                    print(f'\rNo last command\n{STDIN_PROMPT}', end='')
                     continue
 
-                print(f'\nRunning last command: "{last_cmd[:-1].decode()}"\n{STDIN_PROMPT}', end='')
+                print(f'\rRunning last command: "{last_cmd[:-1].decode()}"\n{STDIN_PROMPT}', end='')
+                if last_cmd.startswith(b'r '):
+                    replay_cmd.set(REPLAY_START)
                 ser.write(last_cmd)
 
             elif cmd == 'k':
                 # Kill recording
                 curr_cmd = replay_cmd.cmd
                 if curr_cmd != REPLAY_START:
-                    print(f'\nNothing to kill; we\'re not currently recording\n{STDIN_PROMPT}', end='')
+                    print(f'\rNothing to kill; we\'re not currently recording\n{STDIN_PROMPT}', end='')
                     continue
 
                 replay_cmd.set(REPLAY_KILL)
 
             elif cmd == 'q':
-                print('\nBye')
+                print('Bye')
                 break
 
             else:
-                print(f'\nUnrecognised input: {cmd}\n{STDIN_PROMPT}', end='')
+                print(f'\rUnrecognised input: {cmd}\n{STDIN_PROMPT}', end='')
 
 
 if __name__ == '__main__':
