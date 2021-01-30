@@ -29,6 +29,10 @@ VID_OUT_FOURCC = cv.VideoWriter_fourcc(*'XVID')
 VID_OUT_BORDER_L, VID_OUT_BORDER_T, VID_OUT_BORDER_R, VID_OUT_BORDER_B = 182, 60, 1092, 660
 VID_OUT_WIDTH, VID_OUT_HEIGHT = VID_OUT_BORDER_R - VID_OUT_BORDER_L, VID_OUT_BORDER_B - VID_OUT_BORDER_T
 
+RESULT_TEMPLATE_TYPES = ['f', 'm']
+RESULT_BORDER_L, RESULT_BORDER_T, RESULT_BORDER_R, RESULT_BORDER_B = 670, 575, VID_OUT_BORDER_R, VID_OUT_BORDER_B
+RESULT_THRESHOLD = 0.95
+
 NUM_RECORD_CMDS = 2
 RECORD_START, RECORD_KILL = range(1, NUM_RECORD_CMDS+1)  # Record statuses start from 1
 
@@ -56,6 +60,9 @@ def read_serial(ser, queue):
 
 def process_video(record_cmd):
     """ Save video """
+    # Result templates
+    templates = {t: cv.imread(f'templates/{t}.jpg') for t in RESULT_TEMPLATE_TYPES}
+
     # Open video
     cap = cv.VideoCapture(VID_DEVICE_ID)
     cap.set(cv.CAP_PROP_FOURCC, VID_FOURCC)
@@ -90,9 +97,29 @@ def process_video(record_cmd):
             continue
         frame = frame[VID_OUT_BORDER_T:VID_OUT_BORDER_B, VID_OUT_BORDER_L:VID_OUT_BORDER_R]
 
-        # Save frame
         if recording:
+            # Save frame
             out.write(frame)
+
+            # Check if the run is finished
+            result_frame = frame[RESULT_BORDER_T:RESULT_BORDER_B, RESULT_BORDER_L:RESULT_BORDER_R]
+
+            res_f = cv.matchTemplate(result_frame, templates['f'], cv.TM_CCOEFF_NORMED)
+            res_m = cv.matchTemplate(result_frame, templates['m'], cv.TM_CCOEFF_NORMED)
+
+            if np.max(res_f) > RESULT_THRESHOLD:
+                out.release()
+                record_cmd.value = 0
+                recording, out = False, None
+
+                print(f'\rFailed throw\n{STDIN_PROMPT}', end='')
+
+            elif np.max(res_m) > RESULT_THRESHOLD:
+                out.release()
+                record_cmd.value = 0
+                recording, out = False, None
+
+                print(f'\rSuccessful throw\n{STDIN_PROMPT}', end='')
 
         # Show preview
         cv.imshow('preview', frame)
