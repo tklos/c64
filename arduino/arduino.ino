@@ -103,8 +103,10 @@ void run(String &cmd) {
 	serial.println(buf);
 
 	/* Press fire button */
-	press_button(f1);
-	delay(s1);
+	if (f1 >= 0)
+		press_button(f1);
+	if (s1 > 0)
+		delay(s1);
 
 	/* Run; press and wait, except for the last time */
 	for (int i = 0; i < num_steps-1; i++) {
@@ -114,7 +116,8 @@ void run(String &cmd) {
 	press_button(fr);
 
 	/* Throw */
-	delay(st);
+	if (st > 0)
+		delay(st);
 	move_axis('a', lt);
 
 	serial.println("Finished run");
