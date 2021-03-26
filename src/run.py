@@ -1,3 +1,4 @@
+import glob
 import os
 import queue
 import readline
@@ -139,7 +140,15 @@ def process_video(comm):
                 if postrun_end_time is not None and postrun_end_time < time.time():
                     out_video.release()
 
-                    out_filename = f'{RECORD_DIR}/{str(curr_result):0>5s}.avi'
+                    # Find max version
+                    max_version = 0
+                    for f in glob.iglob(f'{RECORD_DIR}/{str(curr_result):0>5s}-*.avi'):
+                        f = os.path.basename(f)
+                        version = int(f[6:-4])
+                        max_version = max(version, max_version)
+
+                    max_version += 1
+                    out_filename = f'{RECORD_DIR}/{str(curr_result):0>5s}-{max_version:0>2d}.avi'
                     shutil.move(out_video_tmp_filename, out_filename)
 
                     comm.record_cmd, comm.recording = None, False
