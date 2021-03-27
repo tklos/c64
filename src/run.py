@@ -7,6 +7,7 @@ import signal
 import tempfile
 import threading
 import time
+from datetime import datetime
 
 import cv2 as cv
 import numpy as np
@@ -30,7 +31,7 @@ VID_OUT_FOURCC = cv.VideoWriter_fourcc(*'XVID')
 
 VID_OUT_BORDER_L, VID_OUT_BORDER_T, VID_OUT_BORDER_R, VID_OUT_BORDER_B = 182, 60, 1092, 660
 VID_OUT_WIDTH, VID_OUT_HEIGHT = VID_OUT_BORDER_R - VID_OUT_BORDER_L, VID_OUT_BORDER_B - VID_OUT_BORDER_T
-VID_OUT_POSTRUN = 3.
+VID_OUT_POSTRUN, VID_OUT_POSTRUN_FAULT = 3., 10.
 
 RESULT_TEMPLATE_DIGITS = [str(num) for num in range(10)]
 RESULT_TEMPLATE_TYPES = ['practice', 'try-again', 'f', 'm'] + RESULT_TEMPLATE_DIGITS
@@ -43,6 +44,7 @@ NUM_RECORD_CMDS = 2
 RECORD_START, RECORD_KILL = range(NUM_RECORD_CMDS)
 
 RECORD_DIR = 'replays'
+RUN_LOGFILE = 'runlog.csv'
 
 NUM_VID_STATES = 4
 VID_ST_UNKNOWN, VID_ST_READY_RUN, VID_ST_FINISHED, VID_ST_TRY_AGAIN = range(NUM_VID_STATES)
@@ -128,7 +130,7 @@ def process_video(comm):
                 out_video.release()
                 os.remove(out_video_tmp_filename)
 
-                comm.record_cmd, comm.recording = None, False
+                comm.run_cmd, comm.record_cmd, comm.recording = None, None, False
 
                 print(f'\rRecording killed\n{STDIN_PROMPT}', end='')
 
@@ -151,14 +153,19 @@ def process_video(comm):
                     out_filename = f'{RECORD_DIR}/{str(curr_result):0>5s}-{max_version:0>2d}.avi'
                     shutil.move(out_video_tmp_filename, out_filename)
 
-                    comm.record_cmd, comm.recording = None, False
+                    # Save result to log file
+                    with open(RUN_LOGFILE, 'a') as f:
+                        r = curr_result if curr_result == 'fault' else f'{curr_result/100:.2f}'
+                        f.write(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")},"{comm.run_cmd}",{r},{out_filename}\n')
+
+                    comm.run_cmd, comm.record_cmd, comm.recording = None, None, False
 
                     print(f'\rPostrun finished; {out_video_tmp_filename} moved to {out_filename}\n{STDIN_PROMPT}', end='')
 
                 elif postrun_end_time is None:
                     # Check if the run is finished
                     if res_f:
-                        postrun_end_time = time.time() + VID_OUT_POSTRUN
+                        postrun_end_time = time.time() + VID_OUT_POSTRUN_FAULT
                         curr_result = 'fault'
 
                         print(f'\rFailed throw\n{STDIN_PROMPT}', end='')
@@ -198,7 +205,7 @@ class VideoComm:
         # self.state_changed = threading.Condition(threading.Lock())
         self.state_changed = threading.Condition(self._lock)
 
-        self.record_cmd, self.recording = None, False
+        self.run_cmd, self.record_cmd, self.recording = None, None, False
 
     def __enter__(self):
         self._lock.acquire()
@@ -279,6 +286,7 @@ def main():
                 prepare_for_next_run(ser, video_comm)
 
                 with video_comm:
+                    video_comm.run_cmd = cmd[2:]
                     video_comm.record_cmd = RECORD_START
 
                 cmd += '\n'
@@ -295,6 +303,7 @@ def main():
                 prepare_for_next_run(ser, video_comm)
 
                 with video_comm:
+                    video_comm.run_cmd = last_cmd.decode()[2:-1]
                     video_comm.record_cmd = RECORD_START
 
                 ser.write(last_cmd)
