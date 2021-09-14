@@ -1,8 +1,48 @@
+"""Run THEC64 Summer Games II's javelin throw in interactive mode.
+
+Usage: interactive.py -p SERIAL_PORT -o OUT_DIRNAME
+    -p SERIAL_PORT, --port SERIAL_PORT
+        Device name, e.g. '/dev/ttyUSB0'
+    -o OUT_DIRNAME, --out-dir OUT_DIRNAME
+        Directory to store runlog and replays
+
+Available commands:
+    w, s, a, d: up, down, left, right joystick positions; useful for navigating the main menu
+    f: (f)ire
+    r: (r)un
+        format: fi,si,steps,fr,sr,st,lt
+            fi: initial fire button press [ms]; -1 if not pressed at all
+            si: initial skip [ms]
+            steps: number of steps
+            fr: length of each step (fire button press) [ms]
+            sr: skip after each step (except last) [ms]
+            st: skip before throw [ms]
+            lt: throw length (joystick in the left position) [ms]
+        e.g. "-1,500,30,55,55,0,400" -- 30 steps of 55 ms each, throw of 400 ms
+    l: execute (l)ast run command
+    p: (p)repare for the next run (skip to the start screen)
+    q, EOF: (q)uit
+
+Results are saved in {OUT_DIRNAME}/runlog.csv; videos in {OUT_DIRNAME}/replays/.
+
+Runlog file format (csv):
+    date: str
+        YYYY-mm-dd HH:MM:SS
+    cmd: str
+        command used for the given run
+    result: float or str
+        float or 'fault'
+    replay-filename: str
+
+Replay filename format: {result}-{counter}.avi
+    result: in cm
+    counter: next available integer that makes the filename unique
+"""
 import argparse
 import glob
 import os
 import queue
-import readline
+import readline  # command history
 import shutil
 import signal
 import tempfile
@@ -51,6 +91,17 @@ _RUNLOG_FILENAME = 'runlog.csv'
 
 
 def read_stdin(queue):
+    """Thread reading commands from console.
+
+    Passes the data read from standard input to `queue` as tuple ('stdin', data).
+
+    Terminates when EOF or 'q' are received on stdin.
+
+    Parameters:
+        queue: queue.Queue
+
+    Returns: None
+    """
     while True:
         try:
             cmd = input(STDIN_PROMPT).strip()
@@ -66,13 +117,35 @@ def read_stdin(queue):
 
 
 def read_serial(ser, queue):
+    """Thread reading data from the serial port.
+
+    Passes the data read from the serial port to `queue` as tuple ('serial', data).
+
+    This function never terminates.
+
+    Parameters:
+        ser: serial.Serial
+        queue: queue.Queue
+
+    Returns: None
+    """
     while True:
         cmd = ser.readline().rstrip().decode()
         queue.put(('serial', cmd))
 
 
 def process_video(comm, runlog_filename, replays_dirname):
-    """ Video processing thread """
+    """Video processing thread.
+
+    This function never terminates.
+
+    Parameters:
+        comm: VideoComm
+        runlog_filename: str
+        replays_dirname: str
+
+    Returns: None
+    """
     # Result templates
     templates = {t: cv.imread(f'templates/{t}.jpg') for t in RESULT_TEMPLATE_TYPES}
 
@@ -197,12 +270,20 @@ def process_video(comm, runlog_filename, replays_dirname):
 
 
 class VideoComm:
-    """ Class used for communication with the video thread """
+    """Class used for communication with the video thread.
+
+    Attributes:
+        _lock: threading.Lock
+        state: int, {0..NUM_VID_STATES-1}
+        state_changed: threading.Condition
+        run_cmd: str or None
+        record_cmd: int, {0..NUM_RECORD_CMDS-1}
+        recording: bool
+    """
     def __init__(self):
         self._lock = threading.Lock()
 
         self.state = VID_ST_UNKNOWN
-        # self.state_changed = threading.Condition(threading.Lock())
         self.state_changed = threading.Condition(self._lock)
 
         self.run_cmd, self.record_cmd, self.recording = None, None, False
@@ -216,7 +297,12 @@ class VideoComm:
 
 
 def prepare_for_next_run(ser, video_comm):
-    """ Skip through finished and 'try again' states """
+    """Skip through finished and 'try again' states.
+
+    Parameters:
+        ser: serial.Serial
+        video_comm: VideoComm
+    """
     print(f'\rPreparing for next run\n{STDIN_PROMPT}', end='')
 
     while True:
@@ -224,8 +310,6 @@ def prepare_for_next_run(ser, video_comm):
             if video_comm.state == VID_ST_READY_RUN:
                 print(f'\rPrepared\n{STDIN_PROMPT}', end='')
                 return
-            # elif video_comm.state == VID_ST_POSTRUN:
-            #     continue
             elif video_comm.state in [VID_ST_FINISHED, VID_ST_TRY_AGAIN]:
                 ser.write('f\n'.encode())
                 video_comm.state_changed.wait()
@@ -241,6 +325,22 @@ signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 
 def process(serial_port, runlog_filename, replays_dirname):
+    """Main processing function.
+
+    Creates threads for:
+     - reading commands from stdin
+     - reading messages from serial port
+     - video analysis
+
+    Communication with the above threads is done via a queue.Queue and a VideoComm.
+
+    Parameters:
+        serial_port: str
+        runlog_filename: str
+        replays_dirname: str
+
+    Returns: None
+    """
     cmd_queue = queue.Queue()
     video_comm = VideoComm()
 
@@ -329,7 +429,7 @@ def process(serial_port, runlog_filename, replays_dirname):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='..')
+    parser = argparse.ArgumentParser(description='Run THEC64 Summer Games II\'s javelin throw in interactive mode')
     parser.add_argument('-p', '--port', dest='serial_port', help='Device name, e.g. \'/dev/ttyUSB0\'', required=True)
     parser.add_argument('-o', '--out-dir', dest='out_dirname', help='Directory to store runlog and replays', required=True)
 
