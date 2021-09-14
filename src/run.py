@@ -1,3 +1,4 @@
+import argparse
 import glob
 import os
 import queue
@@ -17,7 +18,6 @@ import serial
 # Command i/o settings
 STDIN_PROMPT = '> '
 
-SERIAL_PORT = '/dev/ttyUSB0'
 SERIAL_BAUDRATE = 19200
 
 _CMD_QUEUE_SENTINEL = object()
@@ -43,11 +43,11 @@ RESULT_THRESHOLD = 0.95
 NUM_RECORD_CMDS = 2
 RECORD_START, RECORD_KILL = range(NUM_RECORD_CMDS)
 
-RECORD_DIR = 'replays'
-RUN_LOGFILE = 'runlog.csv'
-
 NUM_VID_STATES = 4
 VID_ST_UNKNOWN, VID_ST_READY_RUN, VID_ST_FINISHED, VID_ST_TRY_AGAIN = range(NUM_VID_STATES)
+
+_REPLAYS_DIRNAME = 'replays'
+_RUNLOG_FILENAME = 'runlog.csv'
 
 
 def read_stdin(queue):
@@ -71,7 +71,7 @@ def read_serial(ser, queue):
         queue.put(('serial', cmd))
 
 
-def process_video(comm):
+def process_video(comm, runlog_filename, replays_dirname):
     """ Video processing thread """
     # Result templates
     templates = {t: cv.imread(f'templates/{t}.jpg') for t in RESULT_TEMPLATE_TYPES}
@@ -144,17 +144,17 @@ def process_video(comm):
 
                     # Find max version
                     max_version = 0
-                    for f in glob.iglob(f'{RECORD_DIR}/{str(curr_result):0>5s}-*.avi'):
+                    for f in glob.iglob(f'{replays_dirname}/{str(curr_result):0>5s}-*.avi'):
                         f = os.path.basename(f)
                         version = int(f[6:-4])
                         max_version = max(version, max_version)
 
                     max_version += 1
-                    out_filename = f'{RECORD_DIR}/{str(curr_result):0>5s}-{max_version:0>2d}.avi'
+                    out_filename = f'{replays_dirname}/{str(curr_result):0>5s}-{max_version:0>2d}.avi'
                     shutil.move(out_video_tmp_filename, out_filename)
 
                     # Save result to log file
-                    with open(RUN_LOGFILE, 'a') as f:
+                    with open(runlog_filename, 'a') as f:
                         r = curr_result if curr_result == 'fault' else f'{curr_result/100:.2f}'
                         f.write(f'{datetime.now().strftime("%Y-%m-%d %H:%M:%S")},"{comm.run_cmd}",{r},{out_filename}\n')
 
@@ -240,14 +240,14 @@ def prepare_for_next_run(ser, video_comm):
 signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 
-def main():
+def process(serial_port, runlog_filename, replays_dirname):
     cmd_queue = queue.Queue()
     video_comm = VideoComm()
 
-    with serial.Serial(SERIAL_PORT, SERIAL_BAUDRATE) as ser:
+    with serial.Serial(serial_port, SERIAL_BAUDRATE) as ser:
         threading.Thread(target=read_stdin, args=(cmd_queue,), daemon=True).start()
         threading.Thread(target=read_serial, args=(ser, cmd_queue), daemon=True).start()
-        threading.Thread(target=process_video, args=(video_comm,), daemon=True).start()
+        threading.Thread(target=process_video, args=(video_comm, runlog_filename, replays_dirname), daemon=True).start()
 
         last_cmd = None
         while True:
@@ -326,6 +326,22 @@ def main():
 
             else:
                 print(f'\rUnrecognised input: {cmd}\n{STDIN_PROMPT}', end='')
+
+
+def main():
+    parser = argparse.ArgumentParser(description='..')
+    parser.add_argument('-p', '--port', dest='serial_port', help='Device name, e.g. \'/dev/ttyUSB0\'', required=True)
+    parser.add_argument('-o', '--out-dir', dest='out_dirname', help='Directory to store runlog and replays', required=True)
+
+    args = parser.parse_args()
+
+    # Out dir
+    runlog_filename = f'{args.out_dirname}/{_RUNLOG_FILENAME}'
+    replays_dirname = f'{args.out_dirname}/{_REPLAYS_DIRNAME}'
+    os.makedirs(replays_dirname, exist_ok=True)
+
+    # Process
+    process(args.serial_port, runlog_filename, replays_dirname)
 
 
 if __name__ == '__main__':
