@@ -168,7 +168,7 @@ def plot_data(data):
 
 def main():
     parser = argparse.ArgumentParser(description='Show results from runlog')
-    parser.add_argument('-f', '--in-file', dest='runlog_filename', help='Runlog file', required=True)
+    parser.add_argument('runlog_filename', help='Runlog file')
 
     args = parser.parse_args()
 
