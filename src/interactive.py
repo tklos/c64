@@ -1,8 +1,10 @@
 """Run THEC64 Summer Games II's javelin throw in interactive mode.
 
-Usage: interactive.py -p SERIAL_PORT -o OUT_DIRNAME
+Usage: interactive.py -p SERIAL_PORT -d VIDEO_DEVICE_ID -o OUT_DIRNAME
     -p SERIAL_PORT, --port SERIAL_PORT
-        Device name, e.g. "/dev/ttyUSB0"
+        Serial device name, e.g. "/dev/ttyUSB0"
+    -d VIDEO_DEVICE_ID, --video-device-id VIDEO_DEVICE_ID
+        Video device ID
     -o OUT_DIRNAME, --out-dir OUT_DIRNAME
         Directory to store runlog and replays
 
@@ -64,7 +66,6 @@ _CMD_QUEUE_SENTINEL = object()
 
 
 # Video settings
-VID_DEVICE_ID = 2
 VID_WIDTH, VID_HEIGHT, VID_FPS = 1280, 720, 20
 VID_FOURCC = cv.VideoWriter_fourcc(*'MJPG')
 VID_OUT_FOURCC = cv.VideoWriter_fourcc(*'XVID')
@@ -138,12 +139,13 @@ def read_serial(ser, queue):
         queue.put(('serial', cmd))
 
 
-def process_video(comm, runlog_filename, replays_dirname):
+def process_video(video_device_id, comm, runlog_filename, replays_dirname):
     """Video processing thread.
 
     This function never terminates.
 
     Parameters:
+        video_device_id: int
         comm: VideoComm
         runlog_filename: str
         replays_dirname: str
@@ -154,7 +156,7 @@ def process_video(comm, runlog_filename, replays_dirname):
     templates = {t: cv.imread(f'templates/{t}.jpg') for t in RESULT_TEMPLATE_TYPES}
 
     # Open video
-    cap = cv.VideoCapture(VID_DEVICE_ID)
+    cap = cv.VideoCapture(video_device_id)
     cap.set(cv.CAP_PROP_FOURCC, VID_FOURCC)
     cap.set(cv.CAP_PROP_FRAME_WIDTH, VID_WIDTH)
     cap.set(cv.CAP_PROP_FRAME_HEIGHT, VID_HEIGHT)
@@ -324,7 +326,7 @@ def prepare_for_next_run(ser, video_comm):
                 # raise RuntimeError(f'Can\'t process video state {video_comm.state}')
 
 
-def process(serial_port, runlog_filename, replays_dirname):
+def process(serial_port, video_device_id, runlog_filename, replays_dirname):
     """Main processing function.
 
     Creates threads for:
@@ -336,6 +338,7 @@ def process(serial_port, runlog_filename, replays_dirname):
 
     Parameters:
         serial_port: str
+        video_device_id: int
         runlog_filename: str
         replays_dirname: str
 
@@ -347,7 +350,7 @@ def process(serial_port, runlog_filename, replays_dirname):
     with serial.Serial(serial_port, SERIAL_BAUDRATE) as ser:
         threading.Thread(target=read_stdin, args=(cmd_queue,), daemon=True).start()
         threading.Thread(target=read_serial, args=(ser, cmd_queue), daemon=True).start()
-        threading.Thread(target=process_video, args=(video_comm, runlog_filename, replays_dirname), daemon=True).start()
+        threading.Thread(target=process_video, args=(video_device_id, video_comm, runlog_filename, replays_dirname), daemon=True).start()
 
         last_cmd = None
         while True:
@@ -430,7 +433,8 @@ def process(serial_port, runlog_filename, replays_dirname):
 
 def main():
     parser = argparse.ArgumentParser(description='Run THEC64 Summer Games II\'s javelin throw in interactive mode')
-    parser.add_argument('-p', '--port', dest='serial_port', help='Device name, e.g. "/dev/ttyUSB0"', required=True)
+    parser.add_argument('-p', '--port', dest='serial_port', help='Serial device name, e.g. "/dev/ttyUSB0"', required=True)
+    parser.add_argument('-d', '--video-device-id', dest='video_device_id', help='Video device ID', type=int, required=True)
     parser.add_argument('-o', '--out-dir', dest='out_dirname', help='Directory to store runlog and replays', required=True)
 
     args = parser.parse_args()
@@ -441,7 +445,7 @@ def main():
     os.makedirs(replays_dirname, exist_ok=True)
 
     # Process
-    process(args.serial_port, runlog_filename, replays_dirname)
+    process(args.serial_port, args.video_device_id, runlog_filename, replays_dirname)
 
 
 if __name__ == '__main__':
