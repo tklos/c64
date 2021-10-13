@@ -2,7 +2,7 @@
 
 Usage: interactive.py -p SERIAL_PORT -o OUT_DIRNAME
     -p SERIAL_PORT, --port SERIAL_PORT
-        Device name, e.g. '/dev/ttyUSB0'
+        Device name, e.g. "/dev/ttyUSB0"
     -o OUT_DIRNAME, --out-dir OUT_DIRNAME
         Directory to store runlog and replays
 
@@ -35,7 +35,7 @@ Runlog file format (csv):
     replay-filename: str
 
 Replay filename format: {result}-{counter}.avi
-    result: in cm
+    result: in cm or "fault"
     counter: next available integer that makes the filename unique
 """
 import argparse
@@ -88,6 +88,10 @@ VID_ST_UNKNOWN, VID_ST_READY_RUN, VID_ST_FINISHED, VID_ST_TRY_AGAIN = range(NUM_
 
 _REPLAYS_DIRNAME = 'replays'
 _RUNLOG_FILENAME = 'runlog.csv'
+
+
+# Ignore SIGINT
+signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 
 def read_stdin(queue):
@@ -320,10 +324,6 @@ def prepare_for_next_run(ser, video_comm):
                 # raise RuntimeError(f'Can\'t process video state {video_comm.state}')
 
 
-# Ignore SIGINT
-signal.signal(signal.SIGINT, signal.SIG_IGN)
-
-
 def process(serial_port, runlog_filename, replays_dirname):
     """Main processing function.
 
@@ -430,7 +430,7 @@ def process(serial_port, runlog_filename, replays_dirname):
 
 def main():
     parser = argparse.ArgumentParser(description='Run THEC64 Summer Games II\'s javelin throw in interactive mode')
-    parser.add_argument('-p', '--port', dest='serial_port', help='Device name, e.g. \'/dev/ttyUSB0\'', required=True)
+    parser.add_argument('-p', '--port', dest='serial_port', help='Device name, e.g. "/dev/ttyUSB0"', required=True)
     parser.add_argument('-o', '--out-dir', dest='out_dirname', help='Directory to store runlog and replays', required=True)
 
     args = parser.parse_args()
