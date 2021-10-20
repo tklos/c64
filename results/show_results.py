@@ -176,6 +176,7 @@ def plot_data(data):
     )
 
     figure.show()
+    # figure.write_image('result-heatmap.png', width=1250, height=955)
 
 
 def main():
