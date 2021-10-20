@@ -16,7 +16,7 @@ def process_runlog(filename):
         key: 2-tuple of int
             (steps, pressed)
         value: list of float
-            sorted list of results; -inf if fault
+            list of results, sorted in descending order; -inf if fault
     """
     data = defaultdict(list)
     with open(filename) as f:
@@ -37,7 +37,7 @@ def process_runlog(filename):
 
     # Sort results
     for val_l in data.values():
-        val_l.sort()
+        val_l.sort(reverse=True)
 
     return data
 
@@ -66,7 +66,7 @@ def plot_data(data):
     heatmap_data = np.zeros((num_steps, num_pressed))
     heatmap_data.fill(np.nan)
     for (steps, pressed), val_l in data.items():
-        heatmap_data[steps-steps_min, pressed-pressed_min] = val_l[-1]
+        heatmap_data[steps-steps_min, pressed-pressed_min] = val_l[0]
 
     # Find failed
     failed_steps, failed_pressed = [], []
@@ -77,15 +77,15 @@ def plot_data(data):
 
     # Create tooltip texts
     tooltip_texts = []
-    for steps in range(steps_min, steps_max+1):
+    for pressed in range(pressed_min, pressed_max+1):
         this_line = []
-        for pressed in range(pressed_min, pressed_max+1):
+        for steps in range(steps_min, steps_max+1):
             text = f'<b>steps: </b>{steps}<br /><b>pressed: </b>{pressed}<br />'
             results = data.get((steps, pressed))
             if results is None:
                 text += 'no results'
             else:
-                text += f'<b>results: </b>' + ', '.join(['fault' if np.isneginf(res) else f'{res:.2f}' for res in reversed(results)])
+                text += f'<b>results: </b>' + ', '.join(['fault' if np.isneginf(res) else f'{res:.2f}' for res in results])
 
             this_line.append(text)
         tooltip_texts.append(this_line)
@@ -108,11 +108,11 @@ def plot_data(data):
     }
     figure = go.Figure(
         data=go.Heatmap(
-            x=list(range(pressed_min, pressed_max+1)),
-            y=list(range(steps_min, steps_max+1)),
-            z=heatmap_data,
-            zmin=40.,
-            zmax=110.,
+            x=list(range(steps_min, steps_max+1)),
+            y=list(range(pressed_min, pressed_max+1)),
+            z=heatmap_data.T,
+            zmin=80.,
+            zmax=102.,
             colorscale='jet',
             hoverinfo='text',
             hovertext=tooltip_texts,
@@ -123,25 +123,37 @@ def plot_data(data):
         ),
         layout={
             'plot_bgcolor': 'white',
+            'margin': {
+                't': 70,
+                'l': 90,
+            },
+            'title': {
+                'text': 'Throw results [m]',
+                'font': {
+                    'size': 30,
+                },
+                'xanchor': 'center',
+                'x': 0.5,
+            },
             'xaxis': {
                 'title': {
-                    'text': 'time pressed [ms]',
+                    'text': 'num steps',
                     'font': {
-                        'size': 30,
+                        'size': 25,
                     },
                 },
-                'range': (pressed_min-0.5, pressed_max+0.5),
+                'range': (steps_min-0.5, steps_max+0.5),
                 **common_axis_settings,
                 # 'scaleanchor': 'y',
             },
             'yaxis': {
                 'title': {
-                    'text': 'num steps',
+                    'text': 'time pressed [ms]',
                     'font': {
-                        'size': 30,
+                        'size': 25,
                     },
                 },
-                'range': (steps_min-0.5, steps_max+0.5),
+                'range': (pressed_min-0.5, pressed_max+0.5),
                 **common_axis_settings,
             },
         }
@@ -150,14 +162,14 @@ def plot_data(data):
     # Plot cross markers
     figure.add_trace(
         go.Scatter(
-            x=failed_pressed,
-            y=failed_steps,
+            x=failed_steps,
+            y=failed_pressed,
             mode='markers',
             marker={
                 'symbol': 'x-thin',
                 'color': 'black',
-                'size': 20,
-                'line_width': 8,
+                'size': 8,
+                'line_width': 3,
             },
             hoverinfo='skip',
         )
