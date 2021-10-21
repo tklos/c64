@@ -143,7 +143,7 @@ In total, using `src/run.py`, 13,000 attempts have been made, out of which 10,00
 The distribution seems to be making sense, with the best results when choosing somewhere between 30 and 60 steps, each one between 20 and 50 ms long. 
 The best result was 101.31 m. There have been 1,400 attemps of at least 90 m, 134 of at least 100 m, 41 of at least 101 m and 8 equal to 101.31 m.
 
-(replay)
+https://user-images.githubusercontent.com/32217494/138312099-b250b9df-c2ef-4aed-85a8-13ff64ad9712.mp4
 
 
 
