@@ -146,6 +146,22 @@ The best result was 101.31 m. There have been 1,400 attemps of at least 90 m, 13
 https://user-images.githubusercontent.com/32217494/138312099-b250b9df-c2ef-4aed-85a8-13ff64ad9712.mp4
 
 
+### Initial skip
+It turns out that the initial skip time, i.e. the time between the start screen being shown and starting the run, has an effect on the throw distance.
+
+Over 3,000 attempts were made, differing only by the initial skip time of up to 6 s.
+
+![initial skip](readme-data/initial-skip.png)
+
+There seems to be a period o 350 ms.
+
+![initial skip - period 350 ms](readme-data/initial-skip-350.png)
+
+Runlog and jupyter notebook are in [`results/initial/`](results/initial/).
+
+A relatively low frame rate used (20 fps, i.e. a frame every 50 ms) might have an influence on the data collected.
+
+
 
 ## Summary
 
